@@ -6,7 +6,8 @@ from gmail_cleanup import (
     get_count,
     get_profile_email,
     generate_report,
-    log_action
+    log_action,
+    read_activity_log
 )
 from datetime import datetime
 
@@ -23,7 +24,7 @@ st.set_page_config(
 # HEADER
 # -----------------------------------
 st.title("📧 AA's Email Cleaner Suite")
-st.caption("Professional Inbox Cleanup Tool")
+st.caption("Professional Inbox Cleanup Tool — V3.1")
 
 # -----------------------------------
 # SIDEBAR
@@ -170,19 +171,49 @@ if "service" in st.session_state:
                 use_container_width=True
             ):
 
-                with st.spinner("Cleaning inbox..."):
+                # ----------------------------
+                # PROGRESS BAR SETUP
+                # ----------------------------
+                ids = get_unread_old_emails(
+                    st.session_state.service,
+                    mode
+                )
 
-                    ids = get_unread_old_emails(
-                        st.session_state.service,
-                        mode
+                count = len(ids)
+
+                if count == 0:
+                    st.info("No emails found to clean for this mode.")
+
+                else:
+
+                    progress_bar = st.progress(
+                        0,
+                        text="Starting cleanup..."
                     )
 
-                    count = len(ids)
+                    status_text = st.empty()
+
+                    def on_progress(processed, total):
+                        pct = processed / total
+                        progress_bar.progress(
+                            pct,
+                            text=f"Cleaning... {processed:,} / {total:,} emails processed"
+                        )
+                        status_text.caption(
+                            f"⏳ {processed:,} of {total:,} emails marked as read ({pct:.0%})"
+                        )
 
                     mark_as_read(
                         st.session_state.service,
-                        ids
+                        ids,
+                        progress_callback=on_progress
                     )
+
+                    progress_bar.progress(
+                        1.0,
+                        text="✅ Cleanup complete!"
+                    )
+                    status_text.empty()
 
                     report_path = generate_report(
                         st.session_state.client,
@@ -198,9 +229,14 @@ if "service" in st.session_state:
                         f"CLEANUP COMPLETE | Mode={mode} | Emails={count}"
                     )
 
-                st.success(
-                    f"Successfully marked {count:,} emails as read."
-                )
+                    log_action(
+                        st.session_state.client,
+                        f"PDF REPORT GENERATED | {report_path}"
+                    )
+
+                    st.success(
+                        f"✅ Successfully marked {count:,} emails as read."
+                    )
 
     # ----------------------------
     # REPORT DOWNLOAD
@@ -216,13 +252,59 @@ if "service" in st.session_state:
             "rb"
         ) as f:
 
+            report_filename = st.session_state.report_path.replace("\\", "/").split("/")[-1]
+
             st.download_button(
-                label="⬇ Download Report",
+                label="⬇ Download PDF Report",
                 data=f,
-                file_name=st.session_state.report_path.split("\\")[-1],
-                mime="text/plain",
+                file_name=report_filename,
+                mime="application/pdf",
                 use_container_width=True
             )
+
+# -----------------------------------
+# ACTIVITY PANEL
+# -----------------------------------
+st.divider()
+
+st.subheader("📋 Recent Activity")
+
+activity_entries = read_activity_log(max_lines=20)
+
+if not activity_entries:
+    st.caption("No activity recorded yet.")
+
+else:
+
+    for entry in activity_entries:
+
+        ts = entry["timestamp"]
+        client = entry["client"]
+        msg = entry["message"]
+
+        # Choose an icon based on the message content
+        if "CONNECTED" in msg:
+            icon = "🔌"
+        elif "SCAN" in msg:
+            icon = "🔍"
+        elif "CLEANUP COMPLETE" in msg:
+            icon = "✅"
+        elif "PDF REPORT" in msg:
+            icon = "📄"
+        else:
+            icon = "📝"
+
+        # Display as a compact row
+        col_icon, col_info = st.columns([0.05, 0.95])
+
+        with col_icon:
+            st.write(icon)
+
+        with col_info:
+            label = f"**[{client}]** {msg}" if client else msg
+            st.markdown(label)
+            if ts:
+                st.caption(ts)
 
 # -----------------------------------
 # FOOTER
@@ -230,5 +312,5 @@ if "service" in st.session_state:
 st.divider()
 
 st.caption(
-    "AA's Computer & Remote Services • Professional Email Cleaner Suite"
+    "AA's Computer & Remote Services • Professional Email Cleaner Suite V3.1"
 )
