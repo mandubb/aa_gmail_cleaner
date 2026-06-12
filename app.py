@@ -267,44 +267,59 @@ if "service" in st.session_state:
 # -----------------------------------
 st.divider()
 
-st.subheader("📋 Recent Activity")
-
 activity_entries = read_activity_log(max_lines=20)
 
-if not activity_entries:
-    st.caption("No activity recorded yet.")
+entry_count = len(activity_entries) if activity_entries else 0
+expander_label = (
+    f"📋 Recent Activity — {entry_count} {'entry' if entry_count == 1 else 'entries'}"
+    if entry_count > 0
+    else "📋 Recent Activity"
+)
 
-else:
+with st.expander(expander_label, expanded=False):
 
-    for entry in activity_entries:
+    if not activity_entries:
+        st.caption("No activity recorded yet.")
 
-        ts = entry["timestamp"]
-        client = entry["client"]
-        msg = entry["message"]
+    else:
 
-        # Choose an icon based on the message content
-        if "CONNECTED" in msg:
-            icon = "🔌"
-        elif "SCAN" in msg:
-            icon = "🔍"
-        elif "CLEANUP COMPLETE" in msg:
-            icon = "✅"
-        elif "PDF REPORT" in msg:
-            icon = "📄"
-        else:
-            icon = "📝"
+        import pandas as pd
 
-        # Display as a compact row
-        col_icon, col_info = st.columns([0.05, 0.95])
+        def _icon(msg):
+            if "CONNECTED" in msg:
+                return "🔌"
+            elif "SCAN" in msg:
+                return "🔍"
+            elif "CLEANUP COMPLETE" in msg:
+                return "✅"
+            elif "PDF REPORT" in msg:
+                return "📄"
+            return "📝"
 
-        with col_icon:
-            st.write(icon)
+        rows = [
+            {
+                " ": _icon(e["message"]),
+                "Timestamp": e["timestamp"] or "—",
+                "Client": e["client"] or "—",
+                "Action": e["message"],
+            }
+            for e in activity_entries
+        ]
 
-        with col_info:
-            label = f"**[{client}]** {msg}" if client else msg
-            st.markdown(label)
-            if ts:
-                st.caption(ts)
+        df = pd.DataFrame(rows)
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            height=min(38 * len(rows) + 38, 320),  # cap at ~8 visible rows
+            column_config={
+                " ": st.column_config.TextColumn(width="small"),
+                "Timestamp": st.column_config.TextColumn(width="medium"),
+                "Client": st.column_config.TextColumn(width="small"),
+                "Action": st.column_config.TextColumn(width="large"),
+            },
+        )
 
 # -----------------------------------
 # FOOTER
